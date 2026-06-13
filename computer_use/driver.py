@@ -436,10 +436,13 @@ def press_key(pid: int, key: str):
         args: dict = {"pid": pid, "key": key}
         if wid:
             args["window_id"] = wid
-        call("press_key", args)
-    else:
-        from computer_use import windows_native as nat
-        nat.send_key(key)
+        try:
+            call("press_key", args)
+            return
+        except DriverError as e:
+            log.warning(f"cua press_key failed ({e}), falling back to native")
+    from computer_use import windows_native as nat
+    nat.send_key(key)
 
 
 def hotkey(pid: int, keys: list[str]):
@@ -487,14 +490,17 @@ def _native_screenshot(pid: int) -> bytes:
 def click_at(pid: int, x: int, y: int):
     log.info(f"  click_at  ({x}, {y})")
     if _check_cua():
-        call("click_at", {"pid": pid, "x": x, "y": y})
-    else:
-        import ctypes
-        ctypes.windll.user32.SetCursorPos(x, y)
-        time.sleep(0.05)
-        ctypes.windll.user32.mouse_event(0x0002, 0, 0, 0, 0)
-        time.sleep(0.05)
-        ctypes.windll.user32.mouse_event(0x0004, 0, 0, 0, 0)
+        try:
+            call("click_at", {"pid": pid, "x": x, "y": y})
+            return
+        except DriverError as e:
+            log.warning(f"cua click_at failed ({e}), falling back to native mouse")
+    import ctypes
+    ctypes.windll.user32.SetCursorPos(x, y)
+    time.sleep(0.05)
+    ctypes.windll.user32.mouse_event(0x0002, 0, 0, 0, 0)
+    time.sleep(0.05)
+    ctypes.windll.user32.mouse_event(0x0004, 0, 0, 0, 0)
 
 
 def page(pid: int, action: str, **kwargs) -> dict:

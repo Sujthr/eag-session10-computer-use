@@ -3,70 +3,54 @@ Layer 2a — Deterministic
 Pre-programmed hotkey recipes. Zero LLM cost.
 """
 import re
-from computer_use import driver, recording
+import time
+from computer_use import recording
 from computer_use.logger import log
-
-# ── Calculator element-index map (from Windows Calculator UIA tree) ───────────
-# Element indices are stable across Calculator sessions.
-_CALC_ELEMENTS = {
-    "0": 24, "1": 25, "2": 26, "3": 27, "4": 28,
-    "5": 29, "6": 30, "7": 31, "8": 32, "9": 33,
-    ".": 34,
-    "/": 19, "÷": 19,
-    "*": 20, "×": 20, "x": 20,
-    "-": 21, "−": 21, "–": 21,
-    "+": 22,
-    "=": 23, "Return": 23, "Enter": 23,
-    "%": 12,
-    "Clear": 14, "Escape": 14,
-    "Backspace": 15,
-}
-
-
-def _tokenise_expression(expr: str) -> list[str]:
-    """Convert an arithmetic expression into a list of character tokens."""
-    expr = expr.replace("×", "*").replace("÷", "/").replace("−", "-").replace("–", "-")
-    expr = re.sub(r"\s+", "", expr)
-    tokens = []
-    for ch in expr:
-        if ch not in _CALC_ELEMENTS:
-            raise ValueError(f"Unsupported character in expression: {ch!r}")
-        tokens.append(ch)
-    tokens.append("=")
-    return tokens
 
 
 def calculator(pid: int, expression: str) -> str:
     """
-    Drive Windows Calculator via UIA element clicks (element_index).
-    Works with UWP Calculator which ignores injected keystrokes.
+    Drive Windows Calculator via keyboard SendInput.
+
+    Using keyboard input instead of UIA element-index clicks avoids
+    cua-driver's window-handle issues with UWP/MSIX apps.  Calculator
+    responds to standard keyboard input when it has focus.
     """
-    log.info(f"Layer 2a: Calculator expression={expression!r}")
-    tokens = _tokenise_expression(expression)
-    log.debug(f"  token sequence: {tokens}")
+    from computer_use import windows_native as nat
 
-    def _click(idx: int, label: str):
-        """Click element; refresh cache and retry once on stale-handle errors."""
-        for attempt in range(2):
-            try:
-                driver.get_window_state(pid)  # always refresh before click
-                driver.click(pid, idx)
-                recording.log_action("click", label)
-                return
-            except Exception as e:
-                if attempt == 0 and ("Invalid window" in str(e) or "not in cache" in str(e)):
-                    log.debug(f"click retry after cache miss: {e}")
-                    continue
-                raise
+    # Normalise unicode operators and strip spaces
+    expr = (expression
+            .replace("×", "*").replace("÷", "/")
+            .replace("−", "-").replace("–", "-")
+            .replace(" ", ""))
 
-    # Clear previous result
-    _click(_CALC_ELEMENTS["Clear"], "Clear")
+    log.info(f"Layer 2a: Calculator keyboard  expr={expr!r}")
 
-    for tok in tokens:
-        _click(_CALC_ELEMENTS[tok], tok)
+    allowed = set("0123456789.+-*/%()")
+    for ch in expr:
+        if ch not in allowed:
+            raise ValueError(f"Unsupported character in expression: {ch!r}")
 
-    log.success("Layer 2a: key sequence complete")
-    return " ".join(tokens)
+    # Ensure Calculator window has focus before we send keys
+    nat.bring_window_to_front(pid, title_hint="Calculator", retries=8, wait=0.4)
+    time.sleep(0.4)
+
+    # Clear any previous result (Escape key)
+    nat.send_key("Escape")
+    time.sleep(0.15)
+
+    # Type each character of the expression
+    for ch in expr:
+        nat.send_key(ch)          # _VK table covers 0-9, +, -, *, /, ., %
+        time.sleep(0.08)
+
+    # Press Enter to evaluate (= button)
+    nat.send_key("Return")
+    time.sleep(0.3)
+
+    recording.log_action("calc_keyboard", expr)
+    log.success(f"Layer 2a: keyboard sequence complete for {expr!r}")
+    return expr
 
 
 # ── Generic hotkey recipe registry ───────────────────────────────────────────

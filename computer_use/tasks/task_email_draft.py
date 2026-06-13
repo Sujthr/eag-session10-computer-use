@@ -26,8 +26,8 @@ def _ts_filename() -> str:
     return f"{FILE_STEM}_{ts}.txt"
 
 _COMPOSE_GOAL = (
-    "The window is Notepad (element_index 0 is the text area). "
-    "Type this exact email draft into element_index 0 in a single type action:\n\n"
+    "The window is Notepad. element_index 0 is the only text area.\n"
+    "STEP 1: Issue exactly ONE type action targeting element_index 0 with this exact text:\n\n"
     "To: team@company.com\n"
     "Subject: Project Delay - Updated Timeline\n\n"
     "Body:\n"
@@ -36,7 +36,9 @@ _COMPOSE_GOAL = (
     "The revised delivery date is now set for two weeks from today. "
     "Thank you for your patience.\n\n"
     "Best regards,\nThe Engineering Team\n\n"
-    "Type ALL of the above as one action into element_index 0, then return verdict=done."
+    "STEP 2: Immediately after that single type action, your next response MUST be "
+    '{\"verdict\": \"done\", \"result\": \"email draft typed\"}. '
+    "Do NOT type again. Do NOT issue any other action."
 )
 
 _VERIFY_SYSTEM = (
@@ -93,7 +95,7 @@ def run() -> dict:
         compose_result = ""
         used_fallback = False
         try:
-            compose_result = layer2b_ally.run(pid, goal=_COMPOSE_GOAL)
+            compose_result = layer2b_ally.run(pid, goal=_COMPOSE_GOAL, max_turns=3)
             log.success(f"Layer 2b compose result: {compose_result!r}")
             recording.log_action("layer2b_compose", f"result={compose_result!r}")
         except layer2b_ally.EscalateToVision:

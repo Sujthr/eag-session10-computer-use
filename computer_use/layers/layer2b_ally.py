@@ -55,15 +55,18 @@ def _dispatch(pid: int, action: dict):
         log.warning(f"Unknown action {act!r}, skipping")
 
 
-def run(pid: int, goal: str, window_id: int = 0) -> str:
+def run(pid: int, goal: str, window_id: int = 0, max_turns: int = MAX_TURNS) -> str:
     """
     Scan → LLM act → verify loop.
     Returns the final result string on success.
     Raises EscalateToVision if the LLM decides the tree is insufficient.
     """
     log.info(f"Layer 2b: goal={goal!r}")
-    for turn in range(1, MAX_TURNS + 1):
-        log.debug(f"  turn {turn}/{MAX_TURNS}")
+    last_action_key: tuple | None = None
+    repeat_count = 0
+
+    for turn in range(1, max_turns + 1):
+        log.debug(f"  turn {turn}/{max_turns}")
 
         state = driver.get_window_state(pid, window_id)
         if state.get("element_count", 0) == 0:
@@ -83,6 +86,22 @@ def run(pid: int, goal: str, window_id: int = 0) -> str:
             log.warning(f"Layer 2b: escalate  reason={reason}")
             raise EscalateToVision(reason)
 
+        # Detect repeated identical actions — means the tree isn't changing
+        # (common with UWP/static AX trees that don't reflect typed content)
+        action_key = (
+            action.get("element_index"),
+            action.get("action"),
+            action.get("value", "")[:80],  # truncate long text for comparison
+        )
+        if action_key == last_action_key:
+            repeat_count += 1
+            if repeat_count >= 2:
+                log.warning(f"Layer 2b: same action repeated {repeat_count+1}x — assuming done")
+                return action.get("value", "done")
+        else:
+            repeat_count = 0
+        last_action_key = action_key
+
         _dispatch(pid, action)
 
-    raise EscalateToVision(f"Max turns ({MAX_TURNS}) exceeded without completion")
+    raise EscalateToVision(f"Max turns ({max_turns}) exceeded without completion")
