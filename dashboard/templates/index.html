@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Desktop Agent — Session 10</title>
+
+  <!-- Bootstrap 5 dark -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <!-- Font Awesome -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet"/>
+  <!-- JetBrains Mono (terminal font) -->
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet"/>
+
+  <style>
+    :root {
+      --bg-base:      #080c14;
+      --bg-card:      rgba(255,255,255,0.04);
+      --bg-card-h:    rgba(255,255,255,0.07);
+      --border:       rgba(255,255,255,0.08);
+      --cyan:         #00f5ff;
+      --purple:       #bf5fff;
+      --green:        #39ff14;
+      --amber:        #ffb300;
+      --red:          #ff4b4b;
+      --text:         #e0e6f0;
+      --text-dim:     #8899aa;
+      --sidebar-w:    260px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      background: var(--bg-base);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      overflow-x: hidden;
+    }
+
+    /* ── Animated background ────────────────────────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 900px 600px at 20% 20%, rgba(0,245,255,.06) 0%, transparent 70%),
+        radial-gradient(ellipse 700px 500px at 80% 80%, rgba(191,95,255,.06) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Layout ─────────────────────────────────────────────────────────── */
+    #layout { display: flex; height: 100vh; position: relative; z-index: 1; }
+
+    /* ── Sidebar ─────────────────────────────────────────────────────────── */
+    #sidebar {
+      width: var(--sidebar-w);
+      min-height: 100vh;
+      background: rgba(8,12,20,.92);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      padding: 0;
+      flex-shrink: 0;
+      backdrop-filter: blur(20px);
+    }
+
+    .sidebar-brand {
+      padding: 20px 20px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .sidebar-brand .logo-icon {
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, var(--cyan), var(--purple));
+      border-radius: 10px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      margin-right: 10px;
+    }
+    .sidebar-brand h6 {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: .5px;
+      text-transform: uppercase;
+      color: var(--cyan);
+      margin: 0;
+    }
+    .sidebar-brand small {
+      color: var(--text-dim);
+      font-size: 11px;
+    }
+
+    .sidebar-section {
+      padding: 16px 20px 6px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--text-dim);
+    }
+
+    .nav-item-custom {
+      margin: 2px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .nav-item-custom a, .nav-item-custom button {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      color: var(--text-dim);
+      text-decoration: none;
+      background: none;
+      border: none;
+      width: 100%;
+      font-size: 13px;
+      font-family: 'Inter', sans-serif;
+      transition: color .15s;
+    }
+    .nav-item-custom:hover { background: var(--bg-card-h); }
+    .nav-item-custom:hover a, .nav-item-custom:hover button { color: var(--text); }
+    .nav-item-custom.active { background: rgba(0,245,255,.08); }
+    .nav-item-custom.active a, .nav-item-custom.active button { color: var(--cyan); }
+    .nav-item-custom .icon { width: 18px; text-align: center; }
+
+    .task-btn-side {
+      margin: 3px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      color: var(--text);
+      padding: 10px 12px;
+      font-size: 13px;
+      font-family: 'Inter', sans-serif;
+      cursor: pointer;
+      width: calc(100% - 20px);
+      text-align: left;
+      transition: border-color .15s, background .15s;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .task-btn-side:hover { border-color: var(--cyan); background: rgba(0,245,255,.05); }
+    .task-btn-side:disabled { opacity: .45; cursor: not-allowed; }
+
+    .task-badge {
+      margin-left: auto;
+      font-size: 10px;
+      padding: 2px 7px;
+      border-radius: 10px;
+      font-weight: 600;
+    }
+    .badge-2a   { background: rgba(57,255,20,.15);  color: var(--green); }
+    .badge-2b   { background: rgba(0,245,255,.15);  color: var(--cyan);  }
+    .badge-cdp  { background: rgba(191,95,255,.15); color: var(--purple);}
+    .badge-vis  { background: rgba(255,179,0,.15);  color: var(--amber); }
+
+    /* ── Provider status ───────────────────────────────────────────────────── */
+    .provider-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 6px;
+    }
+    .dot-active { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .dot-paid   { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+    .dot-off    { background: #444; }
+
+    .provider-row {
+      padding: 5px 12px;
+      font-size: 12px;
+      color: var(--text-dim);
+      display: flex;
+      align-items: center;
+    }
+    .provider-row .provider-name { flex: 1; }
+    .provider-row .provider-tag  { font-size: 10px; color: #666; }
+
+    /* ── Main content ─────────────────────────────────────────────────────── */
+    #main {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    /* ── Glass card ──────────────────────────────────────────────────────── */
+    .glass {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      backdrop-filter: blur(10px);
+    }
+    .glass-header {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: .3px;
+    }
+    .glass-body { padding: 18px 20px; }
+
+    /* ── Header bar ──────────────────────────────────────────────────────── */
+    .top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .top-bar h1 {
+      font-size: 22px;
+      font-weight: 700;
+      background: linear-gradient(90deg, var(--cyan), var(--purple));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    /* ── Status pills ────────────────────────────────────────────────────── */
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      border: 1px solid;
+    }
+    .pill-idle    { border-color: #333; color: var(--text-dim); }
+    .pill-running { border-color: var(--cyan);   color: var(--cyan);   background: rgba(0,245,255,.07); }
+    .pill-done    { border-color: var(--green);  color: var(--green);  background: rgba(57,255,20,.07); }
+    .pill-error   { border-color: var(--red);    color: var(--red);    background: rgba(255,75,75,.07); }
+
+    /* Pulsing dot for running state */
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: .3; }
+    }
+    .pulse { animation: pulse 1.2s ease-in-out infinite; }
+
+    /* ── Task cards row ──────────────────────────────────────────────────── */
+    .task-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+
+    .task-card {
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      padding: 20px;
+      cursor: pointer;
+      transition: border-color .2s, transform .15s, background .2s;
+      position: relative;
+      overflow: hidden;
+    }
+    .task-card::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, var(--accent-a) 0%, transparent 60%);
+      opacity: 0;
+      transition: opacity .2s;
+    }
+    .task-card:hover { transform: translateY(-2px); background: var(--bg-card-h); }
+    .task-card:hover::after { opacity: 1; }
+    .task-card:hover { border-color: var(--card-border); }
+
+    .task-card.card-calc   { --accent-a: rgba(57,255,20,.04);  --card-border: var(--green); }
+    .task-card.card-vscode { --accent-a: rgba(191,95,255,.04); --card-border: var(--purple);}
+    .task-card.card-game   { --accent-a: rgba(255,179,0,.04);  --card-border: var(--amber); }
+
+    .task-card:disabled, .task-card.disabled {
+      opacity: .5;
+      cursor: not-allowed;
+      transform: none !important;
+      pointer-events: none;
+    }
+
+    .tc-icon {
+      width: 44px; height: 44px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      margin-bottom: 14px;
+    }
+    .icon-calc   { background: rgba(57,255,20,.12);  color: var(--green); }
+    .icon-vscode { background: rgba(191,95,255,.12); color: var(--purple);}
+    .icon-game   { background: rgba(255,179,0,.12);  color: var(--amber); }
+
+    .tc-title { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+    .tc-desc  { font-size: 12px; color: var(--text-dim); line-height: 1.5; }
+    .tc-layer {
+      margin-top: 12px;
+      font-size: 11px;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--text-dim);
+    }
+
+    .btn-run {
+      margin-top: 14px;
+      padding: 7px 18px;
+      border-radius: 8px;
+      border: 1px solid;
+      background: transparent;
+      font-size: 12px;
+      font-weight: 600;
+      font-family: 'Inter', sans-serif;
+      cursor: pointer;
+      transition: background .15s, color .15s;
+    }
+    .btn-calc   { border-color: var(--green);  color: var(--green);  }
+    .btn-vscode { border-color: var(--purple); color: var(--purple); }
+    .btn-game   { border-color: var(--amber);  color: var(--amber);  }
+    .btn-calc:hover   { background: var(--green);  color: #000; }
+    .btn-vscode:hover { background: var(--purple); color: #fff; }
+    .btn-game:hover   { background: var(--amber);  color: #000; }
+
+    /* ── Expression input ────────────────────────────────────────────────── */
+    .expr-input {
+      background: rgba(0,0,0,.3);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      padding: 6px 10px;
+      width: 100%;
+      margin-bottom: 8px;
+      outline: none;
+      transition: border-color .15s;
+    }
+    .expr-input:focus { border-color: var(--cyan); }
+
+    /* ── Terminal log ────────────────────────────────────────────────────── */
+    #log-terminal {
+      background: #050810;
+      border-radius: 10px;
+      padding: 14px 16px;
+      height: 320px;
+      overflow-y: auto;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12.5px;
+      line-height: 1.7;
+      border: 1px solid var(--border);
+    }
+    #log-terminal::-webkit-scrollbar       { width: 5px; }
+    #log-terminal::-webkit-scrollbar-track { background: transparent; }
+    #log-terminal::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+
+    .log-line { display: flex; gap: 10px; }
+    .log-ts   { color: #445566; flex-shrink: 0; width: 56px; }
+    .log-lvl  { flex-shrink: 0; width: 64px; font-weight: 700; }
+    .log-msg  { flex: 1; word-break: break-word; }
+
+    .lvl-DEBUG   { color: #556677; }
+    .lvl-INFO    { color: var(--cyan); }
+    .lvl-SUCCESS { color: var(--green); }
+    .lvl-WARNING { color: var(--amber); }
+    .lvl-ERROR   { color: var(--red); }
+
+    /* live dot */
+    .live-dot {
+      width: 8px; height: 8px;
+      background: var(--green);
+      border-radius: 50%;
+      box-shadow: 0 0 6px var(--green);
+      animation: pulse 1.5s infinite;
+    }
+
+    /* ── Result box ──────────────────────────────────────────────────────── */
+    #result-box {
+      background: rgba(0,0,0,.3);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      min-height: 60px;
+      color: var(--text-dim);
+    }
+
+    /* ── Recordings table ────────────────────────────────────────────────── */
+    .rec-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12.5px;
+    }
+    .rec-table th {
+      padding: 9px 14px;
+      text-align: left;
+      color: var(--text-dim);
+      font-weight: 600;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .8px;
+    }
+    .rec-table td {
+      padding: 10px 14px;
+      border-bottom: 1px solid rgba(255,255,255,.04);
+    }
+    .rec-table tr:hover td { background: rgba(255,255,255,.025); }
+
+    .status-ok    { color: var(--green);  }
+    .status-error { color: var(--red); }
+
+    /* ── Scrollbar (main) ───────────────────────────────────────────────── */
+    #main::-webkit-scrollbar       { width: 6px; }
+    #main::-webkit-scrollbar-track { background: transparent; }
+    #main::-webkit-scrollbar-thumb { background: #222; border-radius: 3px; }
+
+    /* ── Responsive ─────────────────────────────────────────────────────── */
+    @media (max-width: 900px) {
+      .task-cards { grid-template-columns: 1fr; }
+      #sidebar { display: none; }
+    }
+  </style>
+</head>
+<body>
+<div id="layout">
+
+  <!-- ══ SIDEBAR ══════════════════════════════════════════════════════════ -->
+  <aside id="sidebar">
+    <div class="sidebar-brand d-flex align-items-center">
+      <div class="logo-icon">🤖</div>
+      <div>
+        <h6>Desktop Agent</h6>
+        <small>Session 10 · Computer Use</small>
+      </div>
+    </div>
+
+    <div class="sidebar-section">Tasks</div>
+    <button class="task-btn-side" onclick="runTask('calculator')">
+      <span>🧮</span>
+      <span>Calculator</span>
+      <span class="task-badge badge-2a">2a</span>
+    </button>
+    <button class="task-btn-side" onclick="runTask('vscode')">
+      <span>💻</span>
+      <span>VS Code</span>
+      <span class="task-badge badge-cdp">CDP</span>
+    </button>
+    <button class="task-btn-side" onclick="runTask('browser_game')">
+      <span>🎮</span>
+      <span>Browser Game</span>
+      <span class="task-badge badge-vis">Vision</span>
+    </button>
+
+    <div class="sidebar-section" style="margin-top:10px">API Providers</div>
+    <div id="provider-list">
+      <!-- filled by JS -->
+    </div>
+
+    <div class="sidebar-section" style="margin-top:10px">Daemon</div>
+    <div class="provider-row">
+      <span class="provider-dot" id="daemon-dot"></span>
+      <span class="provider-name">cua-driver</span>
+      <span class="provider-tag" id="daemon-tag">checking…</span>
+    </div>
+
+    <div style="flex:1"></div>
+    <div style="padding:16px 20px; border-top:1px solid var(--border)">
+      <div style="font-size:11px; color:var(--text-dim);">
+        Gemini keys: <strong id="gemini-count" style="color:var(--cyan)">{{ gemini_count }}</strong>
+      </div>
+      <div style="font-size:11px; color:var(--text-dim); margin-top:4px">
+        Dashboard: <code style="color:var(--text-dim)">:{{ dashboard_port }}</code>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ══ MAIN ═════════════════════════════════════════════════════════════ -->
+  <main id="main">
+
+    <!-- Top bar -->
+    <div class="top-bar">
+      <div>
+        <h1>Desktop Agent</h1>
+        <div style="font-size:12px; color:var(--text-dim); margin-top:4px">
+          Five-layer cascade · cua-driver substrate · Session 10
+        </div>
+      </div>
+      <div id="task-status-pill" class="status-pill pill-idle">
+        <span id="task-status-dot">⊙</span>
+        <span id="task-status-text">Idle</span>
+      </div>
+    </div>
+
+    <!-- Task cards -->
+    <div class="task-cards">
+
+      <!-- Calculator -->
+      <div class="task-card card-calc" id="card-calc" onclick="runTask('calculator')">
+        <div class="tc-icon icon-calc">🧮</div>
+        <div class="tc-title">Calculator</div>
+        <div class="tc-desc">Evaluate arithmetic using Windows Calculator via deterministic hotkey sequences.</div>
+        <div class="tc-layer">Layer 2a — deterministic · zero vision</div>
+        <input class="expr-input" id="calc-expr" value="127 * 43 - 58" placeholder="e.g. 127 * 43 - 58"
+               onclick="event.stopPropagation()" onkeydown="event.stopPropagation()"/>
+        <button class="btn-run btn-calc" onclick="event.stopPropagation(); runTask('calculator')">
+          <i class="fa fa-play me-1"></i> Run Task
+        </button>
+      </div>
+
+      <!-- VS Code -->
+      <div class="task-card card-vscode" id="card-vscode" onclick="runTask('vscode')">
+        <div class="tc-icon icon-vscode">💻</div>
+        <div class="tc-title">VS Code</div>
+        <div class="tc-desc">Create <code>hello_agent.py</code> in VS Code using the Electron CDP page tool.</div>
+        <div class="tc-layer">Electron CDP · Layer 2b fallback</div>
+        <button class="btn-run btn-vscode" onclick="event.stopPropagation(); runTask('vscode')">
+          <i class="fa fa-play me-1"></i> Run Task
+        </button>
+      </div>
+
+      <!-- Browser Game -->
+      <div class="task-card card-game" id="card-game" onclick="runTask('browser_game')">
+        <div class="tc-icon icon-game">🎮</div>
+        <div class="tc-title">Browser Game</div>
+        <div class="tc-desc">Play 2048 using Layer 3 vision — canvas renderer has no AX tree.</div>
+        <div class="tc-layer">Layer 3 vision · set-of-marks</div>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+          <label style="font-size:12px;color:var(--text-dim)">Moves:</label>
+          <input type="number" id="game-moves" value="5" min="1" max="20"
+            style="width:60px;background:rgba(0,0,0,.3);border:1px solid var(--border);
+                   border-radius:6px;color:var(--text);padding:4px 8px;font-size:12px;outline:none;"
+            onclick="event.stopPropagation()"/>
+        </div>
+        <button class="btn-run btn-game" onclick="event.stopPropagation(); runTask('browser_game')">
+          <i class="fa fa-play me-1"></i> Run Task
+        </button>
+      </div>
+
+    </div><!-- /task-cards -->
+
+    <!-- Live terminal + result -->
+    <div class="glass">
+      <div class="glass-header">
+        <div class="live-dot"></div>
+        <span>Agent Terminal</span>
+        <div style="margin-left:auto;display:flex;gap:10px">
+          <button onclick="clearLog()"
+            style="background:none;border:1px solid var(--border);color:var(--text-dim);
+                   border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer;">
+            Clear
+          </button>
+          <button onclick="toggleAutoScroll()"
+            style="background:none;border:1px solid var(--border);color:var(--text-dim);
+                   border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer;"
+            id="autoscroll-btn">
+            Auto-scroll ✓
+          </button>
+        </div>
+      </div>
+      <div class="glass-body" style="padding:12px">
+        <div id="log-terminal"></div>
+      </div>
+    </div>
+
+    <!-- Last result -->
+    <div class="glass">
+      <div class="glass-header">
+        <i class="fa fa-square-check" style="color:var(--cyan)"></i>
+        <span>Last Result</span>
+        <span id="result-task-badge" style="margin-left:auto;font-size:11px;color:var(--text-dim)"></span>
+      </div>
+      <div class="glass-body" style="padding:12px">
+        <pre id="result-box">No task has run yet.</pre>
+      </div>
+    </div>
+
+    <!-- Recordings table -->
+    <div class="glass">
+      <div class="glass-header">
+        <i class="fa fa-film" style="color:var(--purple)"></i>
+        <span>Recordings</span>
+        <button onclick="loadRecordings()"
+          style="margin-left:auto;background:none;border:1px solid var(--border);
+                 color:var(--text-dim);border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer;">
+          <i class="fa fa-arrows-rotate"></i> Refresh
+        </button>
+      </div>
+      <div class="glass-body" style="padding:0">
+        <table class="rec-table">
+          <thead>
+            <tr>
+              <th>Task</th>
+              <th>Layer</th>
+              <th>Status</th>
+              <th>Started</th>
+              <th>Actions</th>
+              <th>Result</th>
+            </tr>
+          </thead>
+          <tbody id="recordings-tbody">
+            <tr><td colspan="6" style="color:var(--text-dim);padding:20px 14px">No recordings yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Architecture reference -->
+    <div class="glass">
+      <div class="glass-header">
+        <i class="fa fa-diagram-project" style="color:var(--cyan)"></i>
+        <span>Five-Layer Cascade</span>
+      </div>
+      <div class="glass-body">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+          {% for layer in [
+            {"n":"1","name":"Extract","cost":"$0","color":"#39ff14","desc":"Read AX tree directly. No LLM."},
+            {"n":"2a","name":"Deterministic","cost":"$0","color":"#39ff14","desc":"Hotkey recipes. No LLM."},
+            {"n":"2b","name":"A11y Tree","cost":"¢¢","color":"#00f5ff","desc":"AX markdown + cheap LLM."},
+            {"n":"3","name":"Vision","cost":"$$$","color":"#ffb300","desc":"Screenshot + set-of-marks + VLM."}
+          ] %}
+          <div style="border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:14px;
+                      background:rgba(255,255,255,.02)">
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;
+                        color:{{layer.color}};margin-bottom:8px">Layer {{layer.n}}</div>
+            <div style="font-weight:700;font-size:13px;margin-bottom:4px">{{layer.name}}</div>
+            <div style="font-size:11px;color:var(--text-dim);margin-bottom:8px">{{layer.desc}}</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:{{layer.color}}">
+              Cost: {{layer.cost}}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+  </main><!-- /main -->
+</div><!-- /layout -->
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>
