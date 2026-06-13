@@ -1,120 +1,116 @@
 # Session 10 — Computer-Use Desktop Agent
 
-A Computer-Use skill that integrates with the Session 9 skill catalogue and drives real desktop applications on Windows using the five-layer cascade architecture. Built on `cua-driver` as the perception/action substrate.
+A Windows desktop automation agent that drives real applications using a **five-layer cascade** architecture. Built on `cua-driver` for UIA/Win32 perception, with a multi-provider LLM client (Gemini → Groq → Cerebras → NVIDIA → GitHub → OpenRouter → OpenAI) and a live web dashboard.
 
 ---
 
-## Architecture: Five Layers
+## Architecture: Five-Layer Cascade
 
-The cascade tries each layer in order and escalates only when the cheaper layer cannot proceed.
+The agent always tries the cheapest layer first and escalates only when needed.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  Layer 1 — Extract                             Cost: $0      │
-│  Read AX tree / clipboard / file directly.                   │
-│  No LLM. Try this first for any read-only goal.              │
+│  Read AX tree / clipboard / file directly. No LLM.          │
 └────────────────────────┬────────────────────────────────────┘
                          │ tree is empty or goal needs action
 ┌────────────────────────▼────────────────────────────────────┐
 │  Layer 2a — Deterministic                      Cost: $0      │
-│  Pre-programmed hotkey / key-sequence recipes.               │
-│  No LLM. Used for Calculator, well-known app shortcuts.      │
+│  Pre-programmed hotkey / key-sequence recipes. No LLM.       │
+│  Used for Calculator, well-known app shortcuts.              │
 └────────────────────────┬────────────────────────────────────┘
-                         │ no known hotkey recipe for goal
+                         │ no known hotkey recipe
 ┌────────────────────────▼────────────────────────────────────┐
 │  Layer 2b — A11y Tree                          Cost: cents   │
-│  get_window_state → AX tree markdown →                       │
-│  cheap text LLM (Gemini Flash-Lite) → element_index action   │
-│  Workhorse layer. Used for most UI navigation.               │
+│  AX tree markdown → cheap text LLM → element_index action.  │
+│  Workhorse layer. Used for most text-based UI.               │
 └────────────────────────┬────────────────────────────────────┘
-                         │ AX tree empty / target missing
+                         │ AX tree empty or target missing
+┌────────────────────────▼────────────────────────────────────┐
+│  Electron / CDP                                Cost: cents   │
+│  Relaunch with --remote-debugging-port, drive via WebSocket. │
+│  Used for VS Code, Slack, Discord (AXWebArea only).          │
+└────────────────────────┬────────────────────────────────────┘
+                         │ canvas-rendered / no AX at all
 ┌────────────────────────▼────────────────────────────────────┐
 │  Layer 3 — Vision                              Cost: dollars │
-│  screenshot → set-of-marks → vision LLM → (x,y) click       │
-│  Last resort. Canvas apps, games, Figma, pixel-painted UIs.  │
+│  screenshot → multimodal LLM → best action.                  │
+│  Last resort. Canvas apps, games, pixel-painted UIs.         │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**Electron special case** sits between Layer 2b and Layer 3. When AX returns a single opaque `AXWebArea` (VS Code, Slack, Discord…), relaunch with `electron_debugging_port` and drive via CDP `page` tool.
+---
+
+## Six Tasks
+
+| # | Task | Layer | App closed after? | File saved |
+|---|------|-------|-------------------|------------|
+| 1 | Calculator arithmetic | 2a | ✓ | — |
+| 2 | VS Code Python script | Electron/CDP | ✓ | `hello_agent_<ts>.py` |
+| 3 | 2048 browser game | 3 vision | ✓ | — |
+| 4 | Notepad meeting notes | 2b | ✓ | `meeting_notes_<ts>.txt` |
+| 5 | Email draft + LLM verify | 2b | ✓ | `email_draft_<ts>.txt` |
+| 6 | Multi-app Calculator→Notepad | 2a+2b | ✓ (both) | `expense_report_<ts>.txt` |
+
+Every file-producing task writes a **timestamped filename** (`YYYYMMDD_HHMMSS`) so re-runs never overwrite previous output. Every app is closed automatically at task completion.
 
 ---
 
-## Three Tasks
+### Task 1 — Calculator Arithmetic (Layer 2a)
 
-### Task 1 — Calculator Arithmetic (Layer 2a, zero vision)
+Evaluates an arithmetic expression in Windows Calculator using deterministic key presses. Reads the result from the AX tree (no LLM, no vision). Verifies against Python's own `ast`-based evaluator.
 
-**Goal:** Evaluate a natural-language arithmetic expression (e.g., `"127 × 43 − 58"`) using Windows Calculator.
+### Task 2 — VS Code Python Script (Electron/CDP)
 
-**Layer path:** Layer 2a — deterministic hotkey sequence.
+Connects to VS Code via Chrome DevTools Protocol (`--remote-debugging-port=9222`). Writes a Python script to disk via the integrated terminal, opens the file in the editor, runs it, and captures stdout. Verified by running the script with `subprocess`.
 
-**How it works:**
-1. Ensure `cua-driver` daemon is running.
-2. Launch `Microsoft.WindowsCalculator_8wekyb3d8bbwe` via `launch_app`.
-3. Parse the expression into a sequence of `press_key` calls (`1`, `2`, `7`, `*`, `4`, `3`, `-`, `5`, `8`, `Enter`).
-4. `get_window_state` → read the display value from the AX tree (no LLM).
-5. Verify the result matches expected output.
+### Task 3 — 2048 Browser Game (Layer 3 Vision)
 
-**Zero vision:** the result is read from the AX tree. No screenshot is taken.
+Launches Chrome in an **isolated profile** (so your existing Chrome windows are never closed). Takes a screenshot of the canvas-rendered game, sends it to a multimodal LLM to get the best move direction, and presses the arrow key. Repeats for N moves. Only task that uses vision.
 
-**Cascade discipline visible:** the skill checks for a hotkey recipe first; only if no recipe exists does it escalate to Layer 2b.
+### Task 4 — Notepad Meeting Notes (Layer 2b)
 
----
+Opens Notepad, asks a cheap text LLM to type a structured meeting notes template (title, date, attendees, agenda, action items). Saves via clipboard capture (`Ctrl+A → Ctrl+C → write to disk`) — bypasses XAML/UWP Notepad's save dialog entirely.
 
-### Task 2 — VS Code File Creation (Electron / CDP path)
+### Task 5 — Email Draft + Verification (Layer 2b)
 
-**Goal:** Open VS Code, create a new file `hello_agent.py`, type a Python hello-world snippet, and save.
+Same approach as Task 4 but adds a second LLM pass that reviews the draft and checks all required fields are present (To:, Subject:, Body:, apology, new deadline). Returns `verified: true/false` and a list of any missing fields.
 
-**Layer path:** Electron escape hatch → CDP `page` tool.
+### Task 6 — Multi-App Workflow (Layer 2a + 2b)
 
-**How it works:**
-1. Check `list_apps` for VS Code; pattern-match against known Electron bundle IDs.
-2. Launch VS Code with `electron_debugging_port: 9222`.
-3. Use `page` tool with CSS selectors to trigger `File → New File` (`.action-label[aria-label="New File"]`).
-4. Type content via `page` action `type`.
-5. Save with `page` action `hotkey` (`Ctrl+S`).
-6. Verify: re-scan AX tree for the tab title containing `hello_agent.py`.
-
-**Why Electron path:** VS Code's AX tree exposes a single `AXWebArea`. Without the debugging port the agent is blind.
+Chains two apps: Calculator computes a budget figure (`157 × 24`), copies the result to the clipboard, then Notepad writes a formatted expense report embedding that number. Verifies the computed value appears in the final document.
 
 ---
 
-### Task 3 — Browser Game (Layer 3 vision)
+## Web Dashboard
 
-**Goal:** Play one move in the browser game [2048](https://play2048.co) (or a locally served equivalent) by identifying the board state and pressing the best-direction key.
+```bash
+python main.py --dashboard
+```
 
-**Layer path:** Layer 3 — screenshot + set-of-marks + vision LLM.
-
-**How it works:**
-1. Launch Chrome and navigate to the game URL.
-2. `get_window_state` → `element_count: 0` (canvas renderer, no AX nodes).
-3. Escalate to Layer 3: `take_screenshot` → draw numbered marks over board cells.
-4. Send screenshot to V9 `/v1/vision` endpoint (Gemini vision model).
-5. Vision LLM returns the best move direction.
-6. `press_key` the arrow key.
-7. Re-screenshot to verify the board changed (score incremented).
-
-**Why vision is forced:** the game canvas paints its own pixels; no AX tree is available.
+Live dashboard at `http://127.0.0.1:8765` with:
+- Six task cards (click to run)
+- Server-sent event log stream
+- Status polling every 3 seconds
+- `/api/run/<task>` POST endpoints
+- `/api/reset` to clear stuck state
 
 ---
 
-## Cascade Decision Log
+## CLI
 
-| Turn | App | AX elements | Layer chosen | Reason |
-|------|-----|------------|--------------|--------|
-| Calculator | Windows Calculator | 237 | 2a | known hotkey recipe |
-| VS Code | VS Code | 1 (AXWebArea) | Electron/CDP | Electron bundle detected |
-| 2048 | Chrome (canvas) | 0 | 3 vision | element_count = 0, canvas renderer |
-
----
-
-## Failure Modes Encountered
-
-| Symptom | Root cause | Fix applied |
-|---------|-----------|-------------|
-| `element_count: 0` on VS Code without flag | Electron app, single `AXWebArea` | Relaunched with `electron_debugging_port: 9222` |
-| Cache miss on Calculator click | UI reflowed after digit entry | Added `get_window_state` before every digit press |
-| Vision LLM returns wrong coordinate | Set-of-marks regions too small | Increased mark box padding to 8 px |
-| Calculator result off-by-one | `press_key("Enter")` triggered `=` then re-evaluated | Changed to read AX tree without pressing `=` again |
+```bash
+python main.py                          # interactive menu (all 6 tasks)
+python main.py --task calculator        # run directly
+python main.py --task vscode
+python main.py --task browser_game
+python main.py --task notepad
+python main.py --task email_draft
+python main.py --task multiapp
+python main.py --task all               # run all six in sequence
+python main.py --dashboard              # web dashboard only
+python main.py --dashboard --no-browser # dashboard without auto-opening browser
+```
 
 ---
 
@@ -123,9 +119,11 @@ The cascade tries each layer in order and escalates only when the cheaper layer 
 ```
 .
 ├── computer_use/
-│   ├── skill.py              # Session 9 catalogue entry point
-│   ├── driver.py             # cua-driver JSON socket wrapper
-│   ├── llm_client.py         # V9 gateway client, key rotation
+│   ├── config.py             # env vars, provider order, key rotation
+│   ├── driver.py             # cua-driver wrapper + Windows-native fallback
+│   ├── llm_client.py         # multi-provider LLM with provider fallback
+│   ├── windows_native.py     # pywin32/ctypes input + close_app utility
+│   ├── recording.py          # session recording / action log
 │   ├── layers/
 │   │   ├── layer1_extract.py
 │   │   ├── layer2a_deterministic.py
@@ -134,47 +132,19 @@ The cascade tries each layer in order and escalates only when the cheaper layer 
 │   └── tasks/
 │       ├── task_calculator.py
 │       ├── task_vscode.py
-│       └── task_browser_game.py
-├── prompts/
-│   └── computer_use.md       # Skill description for S9 catalogue
-├── recordings/               # Trajectory directories (gitignored raw data)
+│       ├── task_browser_game.py
+│       ├── task_notepad.py
+│       ├── task_email_draft.py
+│       └── task_multiapp.py
+├── dashboard/
+│   ├── app.py                # FastAPI + SSE dashboard backend
+│   ├── static/app.js
+│   └── templates/index.html
+├── recordings/               # timestamped output files (gitignored)
 ├── requirements.txt
-├── .env                      # Symlink to shared .env (never committed)
-└── README.md
+├── main.py                   # CLI + interactive launcher
+└── .env                      # API keys (never committed)
 ```
-
----
-
-## API Key Strategy
-
-All LLM and vision calls go through the **V9 gateway** (Session 9). The gateway is configured with a priority chain — free providers first, paid as last resort.
-
-### Provider Priority
-
-| Priority | Provider | Keys | Notes |
-|----------|----------|------|-------|
-| 1 | Gemini (Google) | `GEMINI_API_KEY` + `_1` … `_5` | Round-robin rotation; free tier |
-| 2 | Groq | `GROQ_API_KEY` | Free tier, fast inference |
-| 3 | Cerebras | `CEREBRAS_API_KEY` | Free tier |
-| 4 | NVIDIA | `NVIDIA_API_KEY` | Free tier |
-| 5 | GitHub Models | `GITHUB_ACCESS_TOKEN` | Free via GitHub |
-| 6 | OpenRouter | `OPEN_ROUTER_API_KEY` | Free tier models |
-| 7 | OpenAI | `OPENAI_API_KEY` | **Paid — last resort only** |
-
-### Gemini Key Rotation
-
-The `llm_client.py` keeps a round-robin iterator over all non-empty Gemini keys. When a `429 ResourceExhausted` or `503` is received, it rotates to the next key automatically before retrying:
-
-```python
-GEMINI_KEYS = [v for k, v in os.environ.items()
-               if k.startswith("GEMINI_API_KEY") and v]
-_key_cycle = itertools.cycle(GEMINI_KEYS)
-
-def get_next_gemini_key() -> str:
-    return next(_key_cycle)
-```
-
-If all Gemini keys are exhausted in a single session, the client falls through to Groq → Cerebras → NVIDIA → GitHub → OpenRouter before touching the paid OpenAI key.
 
 ---
 
@@ -183,74 +153,77 @@ If all Gemini keys are exhausted in a single session, the client falls through t
 ### Prerequisites
 
 ```bash
-# Install cua-driver (Rust binary)
+# cua-driver — Windows UIA/Win32 automation binary
+# Download from course materials or:
 cargo install cua-driver
-# or download pre-built from the course materials
 
-# Python deps
+# Python dependencies
 pip install -r requirements.txt
 ```
 
-### Environment
+### Environment variables (`.env`)
 
-```bash
-# Point to shared .env (or copy it here)
-cp "D:/EAG/EAG/06JuneAssignment/cc33f915-5cf0-4ca5-b7ad-8d8e786736e8/.env" .env
+```
+GEMINI_API_KEY=...
+GEMINI_API_KEY_1=...   # up to _5 for round-robin rotation
+GROQ_API_KEY=...
+CEREBRAS_API_KEY=...
+NVIDIA_API_KEY=...
+GITHUB_ACCESS_TOKEN=...
+OPENROUTER_API_KEY=...
+OPENAI_API_KEY=...     # paid, last resort only
 ```
 
-### Run a task
+### Quick start
 
 ```bash
-# Start the cua-driver daemon (once per session)
+# Start cua-driver daemon (once per session)
 cua-driver serve &
 
-# Run all three tasks
-python -m computer_use.skill --task calculator --expression "127 * 43 - 58"
-python -m computer_use.skill --task vscode
-python -m computer_use.skill --task browser_game
-```
+# Interactive launcher
+python main.py
 
-Recordings land in `recordings/<task>/<timestamp>/`.
-
----
-
-## Recording and Replay
-
-Every run wraps its `cua-driver` calls inside `start_recording` / `stop_recording`:
-
-```python
-call("start_recording", {"output_dir": f"recordings/{task}/{session_id}"})
-try:
-    run_task(goal)
-finally:
-    call("stop_recording", {})
-```
-
-To replay a recorded trajectory:
-
-```bash
-cua-driver replay recordings/calculator/20260613_120000/
+# Or jump straight to the dashboard
+python main.py --dashboard
 ```
 
 ---
 
-## Session 9 Integration
+## LLM Provider Priority
 
-The skill drops into the S9 catalogue with **one line** added to `skills.py`:
+| Priority | Provider | Tier | Notes |
+|----------|----------|------|-------|
+| 1 | Gemini (Google) | Free | Round-robin across up to 6 keys |
+| 2 | Groq | Free | Fast inference |
+| 3 | Cerebras | Free | |
+| 4 | NVIDIA | Free | |
+| 5 | GitHub Models | Free | |
+| 6 | OpenRouter | Free | |
+| 7 | OpenAI | **Paid** | Last resort only |
 
-```python
-if skill.name == "computer":
-    return ComputerUseSkill(config).run(goal)
-```
+If a Gemini key hits a 429/503, the client rotates to the next key automatically. If all keys are exhausted, it falls through to the next provider in the chain.
 
-The `prompts/computer_use.md` file follows the same prompt-file shape as the Browser skill. All LLM and vision calls reuse the V9 gateway — no new gateway, no new provider pin.
+---
+
+## Key Design Decisions
+
+**Why clipboard-capture for Notepad saves?**
+Modern Windows 11 Notepad is a XAML/UWP app. `cua-driver`'s UIA hotkey path can't trigger `Ctrl+S` on it. Instead, after typing, the agent does `Ctrl+A → Ctrl+C → write clipboard to disk directly`. No save dialog, no UIA dependency.
+
+**Why isolated Chrome profile for the game task?**
+`taskkill /IM chrome.exe /F` kills all Chrome instances — including the user's open tabs. Using `--user-data-dir=<tempdir>` creates a fully isolated Chrome process that can be killed by PID without touching other windows.
+
+**Why timestamped filenames?**
+Re-running a task should never destroy previous output. Each run produces `meeting_notes_20260614_022238.txt` rather than overwriting a fixed `meeting_notes.txt`.
+
+**Why `type_text` falls back to clipboard paste?**
+MSIX/packaged apps (Calculator, modern Notepad) don't expose a valid window handle to `cua-driver`. When `cua-driver` returns "Invalid window handle", `driver.type_text` falls back to `set_clipboard_text + Ctrl+V`, which works on any app.
 
 ---
 
 ## Safety Notes
 
 - Run in a **dedicated test user account** — the agent has full desktop access.
-- Keep a backup of any file the agent might touch.
+- The `.env` file contains real API keys — never commit it.
 - `cua-driver shutdown` kills the daemon immediately if a run goes wrong.
-- `Ctrl+Z` / `kill_app` are the two recovery primitives — test them before recording.
-- The `.env` file contains real keys — never commit it.
+- The browser game task uses an isolated Chrome profile; your regular Chrome windows are safe.

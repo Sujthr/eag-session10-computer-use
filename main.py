@@ -38,7 +38,10 @@ console = Console()
 try:
     from computer_use import config, driver
     from computer_use.logger import log
-    from computer_use.tasks import task_calculator, task_vscode, task_browser_game
+    from computer_use.tasks import (
+        task_calculator, task_vscode, task_browser_game,
+        task_notepad, task_email_draft, task_multiapp,
+    )
 except ImportError as e:
     console.print(f"[red]Import error: {e}[/red]")
     sys.exit(1)
@@ -223,10 +226,13 @@ def interactive():
     # Menu
     console.print(Panel(
         "[bold]Choose a task to run:[/bold]\n\n"
-        "  [cyan][1][/cyan]  Calculator    [dim](Layer 2a — deterministic, zero vision)[/dim]\n"
-        "  [cyan][2][/cyan]  VS Code       [dim](Electron CDP path)[/dim]\n"
-        "  [cyan][3][/cyan]  Browser Game  [dim](Layer 3 vision)[/dim]\n"
-        "  [cyan][4][/cyan]  Run all three\n"
+        "  [cyan][1][/cyan]  Calculator      [dim](Layer 2a — deterministic, zero vision)[/dim]\n"
+        "  [cyan][2][/cyan]  VS Code         [dim](Electron CDP path)[/dim]\n"
+        "  [cyan][3][/cyan]  Browser Game    [dim](Layer 3 vision — 2048)[/dim]\n"
+        "  [cyan][4][/cyan]  Notepad         [dim](Layer 2b — meeting notes)[/dim]\n"
+        "  [cyan][5][/cyan]  Email Draft     [dim](Layer 2b + LLM verification)[/dim]\n"
+        "  [cyan][6][/cyan]  Multi-App       [dim](Layer 2a+2b — Calculator → Notepad)[/dim]\n"
+        "  [cyan][a][/cyan]  Run all six\n"
         "  [cyan][d][/cyan]  Launch web dashboard\n"
         "  [cyan][q][/cyan]  Quit",
         title="[bold cyan]Desktop Agent — Session 10[/bold cyan]",
@@ -244,8 +250,8 @@ def interactive():
         console.print(Panel(
             f"[green]Expression:[/green]  {expr}\n"
             f"[green]Result:[/green]      [bold]{result.get('result', '?')}[/bold]\n"
-            f"[green]Layer:[/green]       {result.get('layer', '?')}\n"
-            f"[green]Time:[/green]        {result.get('elapsed_s', '?')}s",
+            f"[green]Expected:[/green]    {result.get('expected', '?')}\n"
+            f"[green]Layer:[/green]       {result.get('layer', '?')}",
             title="[bold green]✓ Calculator done[/bold green]",
             border_style="green",
         ))
@@ -254,6 +260,7 @@ def interactive():
         result = _run_task_with_spinner("vscode", task_vscode.run, {})
         console.print(Panel(
             f"[purple]File:[/purple]      {result.get('file', '?')}\n"
+            f"[purple]Output:[/purple]    {result.get('output', '?')}\n"
             f"[purple]Layer:[/purple]     {result.get('layer', '?')}\n"
             f"[purple]Verified:[/purple]  {result.get('verified', '?')}",
             title="[bold]✓ VS Code done[/bold]",
@@ -272,16 +279,60 @@ def interactive():
         ))
 
     elif choice == "4":
-        for name, fn, kwargs in [
+        result = _run_task_with_spinner("notepad", task_notepad.run, {})
+        console.print(Panel(
+            f"[blue]File:[/blue]      {result.get('file', '?')}\n"
+            f"[blue]Chars:[/blue]     {result.get('chars', '?')}\n"
+            f"[blue]Verified:[/blue]  {result.get('verified', '?')}\n"
+            f"[blue]Layer:[/blue]     {result.get('layer', '?')}",
+            title="[bold]✓ Notepad done[/bold]",
+            border_style="blue",
+        ))
+
+    elif choice == "5":
+        result = _run_task_with_spinner("email_draft", task_email_draft.run, {})
+        missing = result.get('missing', [])
+        console.print(Panel(
+            f"[magenta]File:[/magenta]      {result.get('file', '?')}\n"
+            f"[magenta]Chars:[/magenta]     {result.get('chars', '?')}\n"
+            f"[magenta]Verified:[/magenta]  {result.get('verified', '?')}\n"
+            f"[magenta]Missing:[/magenta]   {missing if missing else 'none'}\n"
+            f"[magenta]Layer:[/magenta]     {result.get('layer', '?')}",
+            title="[bold]✓ Email Draft done[/bold]",
+            border_style="magenta",
+        ))
+
+    elif choice == "6":
+        expr = console.input("  Expression [dim](default: 157 * 24)[/dim]: ").strip()
+        if not expr:
+            expr = "157 * 24"
+        result = _run_task_with_spinner("multiapp", task_multiapp.run, {"expression": expr})
+        console.print(Panel(
+            f"[cyan]Expression:[/cyan]  {result.get('expression', '?')}\n"
+            f"[cyan]Result:[/cyan]      [bold]{result.get('result', '?')}[/bold]\n"
+            f"[cyan]File:[/cyan]        {result.get('file', '?')}\n"
+            f"[cyan]Verified:[/cyan]    {result.get('verified', '?')}\n"
+            f"[cyan]Layer:[/cyan]       {result.get('layer', '?')}",
+            title="[bold]✓ Multi-App done[/bold]",
+            border_style="cyan",
+        ))
+
+    elif choice == "a":
+        all_tasks = [
             ("calculator",   task_calculator.run,   {"expression": "127 * 43 - 58"}),
             ("vscode",       task_vscode.run,        {}),
             ("browser_game", task_browser_game.run,  {"moves": 3}),
-        ]:
+            ("notepad",      task_notepad.run,       {}),
+            ("email_draft",  task_email_draft.run,   {}),
+            ("multiapp",     task_multiapp.run,      {"expression": "157 * 24"}),
+        ]
+        for name, fn, kwargs in all_tasks:
             console.print(Rule(f"[bold]{name}[/bold]", style="dim"))
             r = _run_task_with_spinner(name, fn, kwargs)
-            console.print(f"  [green]✓[/green] {name}: {r}")
+            status = "[green]✓[/green]" if r.get("status") == "ok" else "[red]✗[/red]"
+            console.print(f"  {status} {name}: {r}")
         console.print(Rule(style="dim"))
-        console.print("[bold green]All three tasks complete.[/bold green]")
+        console.print("[bold green]All six tasks complete.[/bold green]")
         console.print()
         console.print(_recordings_table())
 
@@ -305,7 +356,8 @@ if __name__ == "__main__":
         description="Desktop Agent — Session 10 Computer-Use"
     )
     parser.add_argument(
-        "--task", choices=["calculator", "vscode", "browser_game", "all"],
+        "--task",
+        choices=["calculator", "vscode", "browser_game", "notepad", "email_draft", "multiapp", "all"],
         help="Run a specific task directly"
     )
     parser.add_argument("--expression", default="127 * 43 - 58")
@@ -333,11 +385,26 @@ if __name__ == "__main__":
                                    {"moves": args.moves})
         print(json.dumps(r, indent=2))
 
+    elif args.task == "notepad":
+        r = _run_task_with_spinner("notepad", task_notepad.run, {})
+        print(json.dumps(r, indent=2))
+
+    elif args.task == "email_draft":
+        r = _run_task_with_spinner("email_draft", task_email_draft.run, {})
+        print(json.dumps(r, indent=2))
+
+    elif args.task == "multiapp":
+        r = _run_task_with_spinner("multiapp", task_multiapp.run, {"expression": args.expression})
+        print(json.dumps(r, indent=2))
+
     elif args.task == "all":
         for name, fn, kwargs in [
             ("calculator",   task_calculator.run,   {"expression": args.expression}),
             ("vscode",       task_vscode.run,        {}),
             ("browser_game", task_browser_game.run,  {"moves": args.moves}),
+            ("notepad",      task_notepad.run,       {}),
+            ("email_draft",  task_email_draft.run,   {}),
+            ("multiapp",     task_multiapp.run,      {"expression": args.expression}),
         ]:
             r = _run_task_with_spinner(name, fn, kwargs)
             print(f"{name}: {json.dumps(r)}")

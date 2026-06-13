@@ -41,12 +41,21 @@ def run(moves: int = MOVES) -> dict:
     log.info(f"=== Task 3: Browser Game (2048)  moves={moves} ===")
 
     with recording.session("browser_game"):
-        # ── Launch Chrome directly via subprocess (avoids cua-driver timeout) ─
+        # ── Launch Chrome in an isolated profile so it stays separate from any
+        #    Chrome windows the user already has open.  This lets us close only
+        #    our instance at the end without touching the user's browser.
+        import tempfile
         chrome_exe = _find_chrome()
-        log.info(f"Launching Chrome: {chrome_exe}")
-        subprocess.run(["taskkill", "/IM", "chrome.exe", "/F"], capture_output=True)
-        time.sleep(0.5)
-        proc = subprocess.Popen([chrome_exe, "--new-window", GAME_URL])
+        _chrome_profile = tempfile.mkdtemp(prefix="chrome_agent_")
+        log.info(f"Launching Chrome: {chrome_exe}  profile={_chrome_profile}")
+        proc = subprocess.Popen([
+            chrome_exe,
+            "--new-window",
+            f"--user-data-dir={_chrome_profile}",
+            "--no-first-run",
+            "--no-default-browser-check",
+            GAME_URL,
+        ])
         pid = proc.pid
         log.info(f"Chrome pid={pid}")
         recording.log_action("launch", f"Chrome pid={pid} url={GAME_URL}")
@@ -102,9 +111,12 @@ def run(moves: int = MOVES) -> dict:
 
         log.success(f"Browser game task complete. Moves made: {moves_made}")
 
-        # ── Close Chrome ──────────────────────────────────────────────────────
-        subprocess.run(["taskkill", "/IM", "chrome.exe", "/F"], capture_output=True)
-        recording.log_action("close", "Chrome closed")
+        # ── Close only the agent's Chrome instance (kill process tree by pid) ─
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True)
+        # Clean up the temporary profile directory
+        import shutil as _shutil
+        _shutil.rmtree(_chrome_profile, ignore_errors=True)
+        recording.log_action("close", f"Chrome pid={pid} closed")
 
         return {
             "moves_made": moves_made,
