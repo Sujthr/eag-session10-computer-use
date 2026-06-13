@@ -164,9 +164,25 @@ def vision(image: Image.Image, prompt: str, system: str = "") -> str:
 
 def chat_json(prompt: str, system: str = "") -> dict[str, Any]:
     """Like chat() but parses the response as JSON, stripping markdown fences."""
+    import re as _re
     raw = chat(prompt, system)
-    # strip ```json ... ``` fences
     text = raw.strip()
     if text.startswith("```"):
         text = text.split("\n", 1)[1].rsplit("```", 1)[0]
-    return json.loads(text.strip())
+    text = text.strip()
+    # Use raw_decode so extra text after the first JSON object is ignored
+    try:
+        obj, _ = json.JSONDecoder().raw_decode(text)
+        if isinstance(obj, dict):
+            return obj
+    except json.JSONDecodeError:
+        pass
+    # Regex fallback: extract first {...} block
+    for m in _re.finditer(r'\{.*?\}', text, _re.DOTALL):
+        try:
+            obj = json.loads(m.group(0))
+            if isinstance(obj, dict):
+                return obj
+        except json.JSONDecodeError:
+            continue
+    raise json.JSONDecodeError(f"No valid JSON object found in: {text[:100]!r}", text, 0)

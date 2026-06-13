@@ -222,7 +222,7 @@ async function runTask(name) {
 }
 
 function setCardsEnabled(enabled) {
-  ['card-calc', 'card-vscode', 'card-game'].forEach(id => {
+  ['card-calc', 'card-vscode', 'card-game', 'card-notepad', 'card-email', 'card-multiapp'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     if (enabled) el.classList.remove('disabled');

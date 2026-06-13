@@ -393,12 +393,22 @@ def type_text(pid: int, element_index: int, text: str):
         args: dict = {"pid": pid, "element_index": element_index, "text": text}
         if wid:
             args["window_id"] = wid
-        call("type_text", args)
-    else:
-        from computer_use import windows_native as nat
-        nat.bring_window_to_front(pid)
-        for ch in text:
-            _native_type_char(ch)
+        try:
+            call("type_text", args)
+            return
+        except DriverError as e:
+            if "Invalid window handle" in str(e) or "window handle" in str(e).lower():
+                log.warning(f"cua type_text failed ({e}), falling back to native clipboard paste")
+            else:
+                raise
+    # Native fallback: clipboard paste (faster and handles MSIX/UWP apps)
+    from computer_use import windows_native as nat
+    nat.bring_window_to_front(pid)
+    time.sleep(0.15)
+    nat.set_clipboard_text(text)
+    time.sleep(0.05)
+    nat.send_hotkey(["ctrl", "v"])
+    time.sleep(0.1)
 
 
 def _native_type_char(ch: str):

@@ -285,23 +285,49 @@ def set_clipboard_text(text: str):
 
 def get_window_state(pid: int, **_) -> dict:
     """
-    Return a minimal window-state dict.
-    element_count > 0 so layers see a live window.
+    Return a synthetic AX-tree dict shaped like cua-driver's get_window_state.
+    Tree content is tailored to the window title so Layer 2b gets useful context.
     """
     hwnd = _hwnd_for_pid(pid)
     if hwnd is None:
         return {"element_count": 0, "markdown": ""}
 
     title = win32gui.GetWindowText(hwnd)
-    # Build a very small synthetic AX tree markdown so Layer 2b can work
-    markdown = (
-        f"# Window: {title}\n"
-        f"[element_index 0] Display: (value shown on screen)\n"
-        f"[element_index 1] Button: C (Clear)\n"
-        f"[element_index 2] Button: = (Equals)\n"
-    )
+    tl = title.lower()
+
+    if "calculator" in tl:
+        markdown = (
+            f"# Window: {title}\n"
+            f"[element_index 0] Display: (shows current calculated value)\n"
+            f"[element_index 1] Button: C (Clear all)\n"
+            f"[element_index 2] Button: = (Equals / compute result)\n"
+        )
+    elif any(x in tl for x in ("notepad", "untitled", ".txt", "meeting_notes", "email_draft", "expense")):
+        markdown = (
+            f"# Window: {title}\n"
+            f"[element_index 0] TextArea: main text editing area — type all content here\n"
+        )
+    elif any(x in tl for x in ("mail", "outlook", "message", "compose")):
+        markdown = (
+            f"# Window: {title}\n"
+            f"[element_index 0] Field: To — recipient email address\n"
+            f"[element_index 1] Field: Subject — email subject line\n"
+            f"[element_index 2] TextArea: Body — email message body\n"
+        )
+    elif any(x in tl for x in ("word", "document", "wordpad")):
+        markdown = (
+            f"# Window: {title}\n"
+            f"[element_index 0] DocumentArea: main document editing area\n"
+        )
+    else:
+        markdown = (
+            f"# Window: {title}\n"
+            f"[element_index 0] ContentArea: main interactive area of this window\n"
+        )
+
+    lines = [l for l in markdown.splitlines() if "[element_index" in l]
     return {
-        "element_count": 3,
+        "element_count": len(lines),
         "markdown":      markdown,
         "window_title":  title,
         "hwnd":          hwnd,

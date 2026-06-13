@@ -16,7 +16,7 @@ from fastapi.templating import Jinja2Templates
 
 from computer_use import config, driver
 from computer_use.logger import log, subscribe, unsubscribe
-from computer_use.tasks import task_calculator, task_vscode, task_browser_game
+from computer_use.tasks import task_calculator, task_vscode, task_browser_game, task_notepad, task_email_draft, task_multiapp
 
 # ─────────────────────────────────────────────────────────────────────────────
 BASE_DIR      = Path(__file__).parent
@@ -157,6 +157,51 @@ async def run_browser_game(body: dict = {}):
     )
     t.start()
     return {"started": True, "task": "browser_game", "moves": moves}
+
+
+@app.post("/api/run/notepad")
+async def run_notepad():
+    if _task_state["running"]:
+        return JSONResponse({"error": "A task is already running"}, status_code=409)
+    with _task_lock:
+        _task_state["task"] = "notepad"
+    t = threading.Thread(
+        target=_run_in_thread,
+        args=(task_notepad.run, {}),
+        daemon=True,
+    )
+    t.start()
+    return {"started": True, "task": "notepad"}
+
+
+@app.post("/api/run/email_draft")
+async def run_email_draft():
+    if _task_state["running"]:
+        return JSONResponse({"error": "A task is already running"}, status_code=409)
+    with _task_lock:
+        _task_state["task"] = "email_draft"
+    t = threading.Thread(
+        target=_run_in_thread,
+        args=(task_email_draft.run, {}),
+        daemon=True,
+    )
+    t.start()
+    return {"started": True, "task": "email_draft"}
+
+
+@app.post("/api/run/multiapp")
+async def run_multiapp():
+    if _task_state["running"]:
+        return JSONResponse({"error": "A task is already running"}, status_code=409)
+    with _task_lock:
+        _task_state["task"] = "multiapp"
+    t = threading.Thread(
+        target=_run_in_thread,
+        args=(task_multiapp.run, {}),
+        daemon=True,
+    )
+    t.start()
+    return {"started": True, "task": "multiapp"}
 
 
 @app.get("/api/task/result")

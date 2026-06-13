@@ -543,6 +543,50 @@
 
     </div><!-- /task-cards -->
 
+    <!-- Second row: 3 new tasks -->
+    <div class="task-cards">
+
+      <!-- Notepad Notes -->
+      <div class="task-card" id="card-notepad" onclick="runTask('notepad')"
+           style="--accent-a:rgba(0,245,255,.04);--card-border:var(--cyan)">
+        <div class="tc-icon" style="background:rgba(0,245,255,.12);color:var(--cyan)">📝</div>
+        <div class="tc-title">Notepad Notes</div>
+        <div class="tc-desc">Write structured meeting notes in Notepad using the AX tree and LLM judgment.</div>
+        <div class="tc-layer">Layer 2b — AX tree · cheap LLM</div>
+        <button class="btn-run" style="border-color:var(--cyan);color:var(--cyan)"
+                onclick="event.stopPropagation(); runTask('notepad')">
+          <i class="fa fa-play me-1"></i> Run Task
+        </button>
+      </div>
+
+      <!-- Email Draft -->
+      <div class="task-card" id="card-email" onclick="runTask('email_draft')"
+           style="--accent-a:rgba(57,255,20,.04);--card-border:var(--green)">
+        <div class="tc-icon" style="background:rgba(57,255,20,.12);color:var(--green)">✉️</div>
+        <div class="tc-title">Email Draft</div>
+        <div class="tc-desc">Compose a professional email draft with Layer 2b and verify all required fields are present.</div>
+        <div class="tc-layer">Layer 2b — compose · verify · confirm</div>
+        <button class="btn-run" style="border-color:var(--green);color:var(--green)"
+                onclick="event.stopPropagation(); runTask('email_draft')">
+          <i class="fa fa-play me-1"></i> Run Task
+        </button>
+      </div>
+
+      <!-- Multi-App Workflow -->
+      <div class="task-card" id="card-multiapp" onclick="runTask('multiapp')"
+           style="--accent-a:rgba(191,95,255,.04);--card-border:var(--purple)">
+        <div class="tc-icon" style="background:rgba(191,95,255,.12);color:var(--purple)">🔀</div>
+        <div class="tc-title">Multi-App Workflow</div>
+        <div class="tc-desc">Calculate a value in Windows Calculator, then transfer it to Notepad via clipboard.</div>
+        <div class="tc-layer">Layer 2a + 2b — two apps · clipboard transfer</div>
+        <button class="btn-run" style="border-color:var(--purple);color:var(--purple)"
+                onclick="event.stopPropagation(); runTask('multiapp')">
+          <i class="fa fa-play me-1"></i> Run Task
+        </button>
+      </div>
+
+    </div><!-- /task-cards-2 -->
+
     <!-- Live terminal + result -->
     <div class="glass">
       <div class="glass-header">
@@ -616,11 +660,12 @@
         <span>Five-Layer Cascade</span>
       </div>
       <div class="glass-body">
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px">
           {% for layer in [
             {"n":"1","name":"Extract","cost":"$0","color":"#39ff14","desc":"Read AX tree directly. No LLM."},
             {"n":"2a","name":"Deterministic","cost":"$0","color":"#39ff14","desc":"Hotkey recipes. No LLM."},
             {"n":"2b","name":"A11y Tree","cost":"¢¢","color":"#00f5ff","desc":"AX markdown + cheap LLM."},
+            {"n":"CDP","name":"Electron","cost":"$0","color":"#bf5fff","desc":"CDP WebSocket. No vision, no AX."},
             {"n":"3","name":"Vision","cost":"$$$","color":"#ffb300","desc":"Screenshot + set-of-marks + VLM."}
           ] %}
           <div style="border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:14px;
