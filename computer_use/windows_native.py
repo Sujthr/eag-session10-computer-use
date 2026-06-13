@@ -174,19 +174,56 @@ def _hwnd_by_title(title_contains: str) -> int | None:
 _pid_hwnd: dict[int, int] = {}
 
 
+def _force_foreground(hwnd: int) -> bool:
+    """
+    Reliably bring hwnd to the foreground even when Windows blocks it.
+
+    Windows prevents SetForegroundWindow from succeeding unless the calling
+    process already owns the foreground input queue.  The fix: temporarily
+    attach our thread's input queue to the current foreground thread's queue
+    (AttachThreadInput), call SetForegroundWindow, then detach.
+    """
+    import ctypes
+    user32   = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
+
+    # Restore the window first (unminimise if needed)
+    win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+    time.sleep(0.05)
+
+    fg_hwnd = user32.GetForegroundWindow()
+    fg_tid  = win32process.GetWindowThreadProcessId(fg_hwnd)[0] if fg_hwnd else 0
+    our_tid = kernel32.GetCurrentThreadId()
+
+    attached = False
+    if fg_tid and fg_tid != our_tid:
+        attached = bool(user32.AttachThreadInput(our_tid, fg_tid, True))
+
+    try:
+        user32.BringWindowToTop(hwnd)
+        win32gui.SetForegroundWindow(hwnd)
+    except Exception as e:
+        log.debug(f"[native] _force_foreground SetForegroundWindow: {e}")
+    finally:
+        if attached:
+            user32.AttachThreadInput(our_tid, fg_tid, False)
+
+    time.sleep(0.1)
+    return win32gui.GetForegroundWindow() == hwnd
+
+
 def bring_window_to_front(pid: int, title_hint: str = "", retries: int = 4, wait: float = 0.4):
     """
     Bring a window to the foreground.
     For UWP apps (like Windows 11 Calculator) the launcher PID != window PID,
     so we also try matching by window title.
+    Uses _force_foreground to bypass Windows' foreground-lock.
     """
     # Try cached hwnd first (fast path)
     cached = _pid_hwnd.get(pid)
     if cached and win32gui.IsWindow(cached):
         try:
-            win32gui.ShowWindow(cached, win32con.SW_RESTORE)
-            win32gui.SetForegroundWindow(cached)
-            time.sleep(0.15)
+            _force_foreground(cached)
             return cached
         except Exception:
             del _pid_hwnd[pid]
@@ -206,19 +243,14 @@ def bring_window_to_front(pid: int, title_hint: str = "", retries: int = 4, wait
                     break
 
         if hwnd:
-            try:
-                win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-                win32gui.SetForegroundWindow(hwnd)
-                time.sleep(0.15)
-                _pid_hwnd[pid] = hwnd
-                log.debug(f"[native] Foregrounded hwnd={hwnd:#010x} title={win32gui.GetWindowText(hwnd)!r}")
-                return hwnd
-            except Exception as e:
-                log.debug(f"[native] SetForegroundWindow failed: {e}")
+            _force_foreground(hwnd)
+            _pid_hwnd[pid] = hwnd
+            log.debug(f"[native] Foregrounded hwnd={hwnd:#010x} title={win32gui.GetWindowText(hwnd)!r}")
+            return hwnd
 
         time.sleep(wait)
 
-    log.debug(f"[native] Could not foreground window for pid={pid} (may still receive keys if already active)")
+    log.debug(f"[native] Could not foreground window for pid={pid}")
     return None
 
 

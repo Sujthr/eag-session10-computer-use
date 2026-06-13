@@ -130,13 +130,18 @@ def run(expression: str = "127 * 43 - 58") -> dict:
         if pid is None:
             raise RuntimeError("Could not launch Windows Calculator")
 
-        # UWP Calculator: bring to front using title hint since PID may differ
-        try:
-            from computer_use import windows_native as nat
-            nat.bring_window_to_front(pid, title_hint="Calculator", retries=6, wait=0.4)
-        except Exception:
-            driver.bring_to_front(pid)
-        time.sleep(0.3)
+        # UWP Calculator: window takes a moment to appear; retry aggressively
+        from computer_use import windows_native as nat
+        time.sleep(0.8)
+        hwnd = nat.bring_window_to_front(pid, title_hint="Calculator", retries=10, wait=0.5)
+
+        # Maximise so it's fully visible in screen recordings
+        if hwnd:
+            import win32gui as _wg, win32con as _wc
+            _wg.ShowWindow(hwnd, _wc.SW_MAXIMIZE)
+            time.sleep(0.2)
+            nat._force_foreground(hwnd)   # re-assert focus after maximize
+        time.sleep(0.5)
 
         # ── Layer 2a: deterministic key sequence ──────────────────────────────
         layer2a_deterministic.calculator(pid, expression)
