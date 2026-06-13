@@ -332,3 +332,29 @@ def get_window_state(pid: int, **_) -> dict:
         "window_title":  title,
         "hwnd":          hwnd,
     }
+
+
+def close_app(pid: int, title_hint: str = "") -> None:
+    """
+    Terminate an application cleanly.
+
+    Uses taskkill /F so no save-dialog can block the close.  The caller is
+    responsible for ensuring any file content has been saved before calling this.
+    """
+    import subprocess
+    result = subprocess.run(
+        ["taskkill", "/F", "/PID", str(pid)],
+        capture_output=True,
+    )
+    if result.returncode == 0:
+        log.info(f"[close_app] pid={pid} terminated")
+    else:
+        # pid might be the launcher; try title-based close as fallback
+        err = result.stderr.decode("utf-8", errors="replace").strip()
+        log.warning(f"[close_app] taskkill pid={pid} failed ({err}), trying title")
+        if title_hint:
+            subprocess.run(
+                ["taskkill", "/F", "/FI", f"WINDOWTITLE eq *{title_hint}*"],
+                capture_output=True,
+            )
+            log.info(f"[close_app] closed by title hint {title_hint!r}")

@@ -101,6 +101,11 @@ def run(moves: int = MOVES) -> dict:
             moves_made += 1
 
         log.success(f"Browser game task complete. Moves made: {moves_made}")
+
+        # ── Close Chrome ──────────────────────────────────────────────────────
+        subprocess.run(["taskkill", "/IM", "chrome.exe", "/F"], capture_output=True)
+        recording.log_action("close", "Chrome closed")
+
         return {
             "moves_made": moves_made,
             "layer":      "3_vision",

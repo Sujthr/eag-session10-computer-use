@@ -12,6 +12,7 @@ Demonstrates the Electron debugging path:
   6. Run the script in the terminal and capture output
 """
 import base64
+import datetime
 import json
 import os
 import subprocess
@@ -28,7 +29,12 @@ DEBUGGING_PORT = 9222
 OUT_DIR        = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "..", "recordings", "vscode_files")
 )
-FILE_NAME      = "hello_agent.py"
+FILE_STEM      = "hello_agent"
+
+
+def _ts_filename() -> str:
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    return f"{FILE_STEM}_{ts}.py"
 
 _SNIPPET = (
     '"""Computer-Use Agent — Session 10 demo script."""\n\n'
@@ -117,7 +123,8 @@ def run() -> dict:
 
     with recording.session("vscode"):
         os.makedirs(OUT_DIR, exist_ok=True)
-        file_path = os.path.join(OUT_DIR, FILE_NAME).replace("\\", "/")
+        file_name = _ts_filename()
+        file_path = os.path.join(OUT_DIR, file_name).replace("\\", "/")
 
         # ── Launch VS Code with CDP debugging port ────────────────────────────
         log.info(f"Launching VS Code  port={DEBUGGING_PORT}")
@@ -205,7 +212,7 @@ def run() -> dict:
         time.sleep(0.2)
         _key(ws, "Enter", "Enter", 13)
         time.sleep(1.5)
-        recording.log_action("cdp_type", f"python {FILE_NAME}")
+        recording.log_action("cdp_type", f"python {file_name}")
 
         # ── Verify script output from disk (file was written and is runnable) ──
         run_output = ""
@@ -221,12 +228,16 @@ def run() -> dict:
 
         verified = "Hello" in run_output and "World" in run_output
         recording.log_action("verify", f"output={run_output!r} ok={verified}")
+
+        # ── Close VS Code (script already saved to disk) ──────────────────────
         ws.close()
+        subprocess.run(["taskkill", "/IM", "Code.exe", "/F"], capture_output=True)
+        recording.log_action("close", "VS Code closed")
 
         return {
-            "file":    FILE_NAME,
-            "output":  run_output,
-            "layer":   "electron_cdp",
+            "file":     file_name,
+            "output":   run_output,
+            "layer":    "electron_cdp",
             "verified": verified,
-            "status":  "ok",
+            "status":   "ok",
         }

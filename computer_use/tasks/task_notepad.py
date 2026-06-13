@@ -13,14 +13,18 @@ import datetime
 import time
 from pathlib import Path
 
-import win32gui
-
 from computer_use import driver, recording
 from computer_use.layers import layer2b_ally
 from computer_use.logger import log
 
-OUT_DIR   = Path(__file__).parent.parent.parent / "recordings" / "notepad_files"
-FILE_NAME = "meeting_notes.txt"
+
+OUT_DIR        = Path(__file__).parent.parent.parent / "recordings" / "notepad_files"
+FILE_STEM      = "meeting_notes"
+
+
+def _ts_filename() -> str:
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    return f"{FILE_STEM}_{ts}.txt"
 
 _TODAY = datetime.date.today().strftime("%B %d, %Y")
 
@@ -64,7 +68,8 @@ def run() -> dict:
 
     with recording.session("notepad"):
         OUT_DIR.mkdir(parents=True, exist_ok=True)
-        file_path = OUT_DIR / FILE_NAME
+        file_name = _ts_filename()
+        file_path = OUT_DIR / file_name
         file_path.write_text("", encoding="utf-8")   # pre-create so no "create?" dialog
 
         # ── Launch Notepad ────────────────────────────────────────────────────
@@ -84,17 +89,19 @@ def run() -> dict:
             recording.log_action("layer2b", f"result={layer2b_result!r}")
         except layer2b_ally.EscalateToVision:
             log.warning("Layer 2b escalated — using clipboard fallback")
-            _clipboard_write(FILE_NAME, _FALLBACK_CONTENT)
+            _clipboard_write(pid, _FALLBACK_CONTENT)
             layer2b_result = "fallback_clipboard"
             recording.log_action("fallback", "clipboard paste")
 
         # ── Capture content from Notepad and write directly to disk ──────────
-        # Modern Windows 11 Notepad (XAML/UWP) can't receive Ctrl+S via
-        # cua-driver's UIA hotkey path. Instead we select-all, copy, then
-        # write the clipboard content directly to the target file.
         time.sleep(0.3)
-        content = _capture_and_save(FILE_NAME, file_path)
-        recording.log_action("save", f"captured {len(content)} chars")
+        content = _capture_and_save(pid, file_path)
+        recording.log_action("save", f"captured {len(content)} chars → {file_name}")
+
+        # ── Close Notepad (content already saved to disk) ─────────────────────
+        from computer_use import windows_native as nat
+        nat.close_app(pid, title_hint="Notepad")
+        recording.log_action("close", "Notepad closed")
 
         # ── Verify ────────────────────────────────────────────────────────────
         saved_content = ""
@@ -111,7 +118,7 @@ def run() -> dict:
         recording.log_action("verify", f"chars={len(saved_content)} ok={verified}")
 
         return {
-            "file":     FILE_NAME,
+            "file":     file_name,
             "chars":    len(saved_content),
             "verified": verified,
             "layer":    "2b",
@@ -121,25 +128,11 @@ def run() -> dict:
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _capture_and_save(file_hint: str, file_path: Path) -> str:
-    """
-    Find the Notepad window by filename in title, capture all text via
-    Ctrl+A → Ctrl+C, then write directly to disk.
-    Returns the captured content string.
-    """
+def _capture_and_save(pid: int, file_path: Path) -> str:
+    """Focus Notepad by pid, capture all text via Ctrl+A/C, write to disk."""
     from computer_use import windows_native as nat
-
-    stem = Path(file_hint).stem  # "meeting_notes"
-    hwnd = (
-        nat._hwnd_by_title(stem) or
-        nat._hwnd_by_title("Notepad")
-    )
-    if hwnd:
-        try:
-            win32gui.SetForegroundWindow(hwnd)
-        except Exception:
-            pass
-        time.sleep(0.3)
+    nat.bring_window_to_front(pid, title_hint="Notepad", retries=4, wait=0.3)
+    time.sleep(0.3)
 
     nat.set_clipboard_text("")
     time.sleep(0.05)
@@ -159,17 +152,10 @@ def _capture_and_save(file_hint: str, file_path: Path) -> str:
     return content
 
 
-def _clipboard_write(file_hint: str, text: str):
-    """Focus the Notepad window by filename and paste text via clipboard."""
+def _clipboard_write(pid: int, text: str):
+    """Focus Notepad by pid and paste text via clipboard."""
     from computer_use import windows_native as nat
-
-    stem = Path(file_hint).stem
-    hwnd = nat._hwnd_by_title(stem) or nat._hwnd_by_title("Notepad")
-    if hwnd:
-        try:
-            win32gui.SetForegroundWindow(hwnd)
-        except Exception:
-            pass
+    nat.bring_window_to_front(pid, title_hint="Notepad", retries=4, wait=0.3)
     time.sleep(0.3)
     nat.set_clipboard_text(text)
     time.sleep(0.1)

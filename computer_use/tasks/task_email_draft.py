@@ -9,6 +9,7 @@ Demonstrates Layer 2b with strong verification:
   4. Verification pass: LLM reviews the draft and confirms all required
      fields (To:, Subject:, Body with apology + new timeline) are present
 """
+import datetime
 import time
 from pathlib import Path
 
@@ -17,7 +18,12 @@ from computer_use.layers import layer2b_ally
 from computer_use.logger import log
 
 OUT_DIR   = Path(__file__).parent.parent.parent / "recordings" / "notepad_files"
-FILE_NAME = "email_draft.txt"
+FILE_STEM = "email_draft"
+
+
+def _ts_filename() -> str:
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    return f"{FILE_STEM}_{ts}.txt"
 
 _COMPOSE_GOAL = (
     "The window is Notepad (element_index 0 is the text area). "
@@ -70,7 +76,8 @@ def run() -> dict:
 
     with recording.session("email_draft"):
         OUT_DIR.mkdir(parents=True, exist_ok=True)
-        file_path = OUT_DIR / FILE_NAME
+        file_name = _ts_filename()
+        file_path = OUT_DIR / file_name
         file_path.write_text("", encoding="utf-8")
 
         # ── Launch Notepad ────────────────────────────────────────────────────
@@ -104,7 +111,12 @@ def run() -> dict:
             file_path.write_text(content, encoding="utf-8")
             used_fallback = True
         log.info(f"File content ({len(content)} chars)")
-        recording.log_action("save", f"captured {len(content)} chars")
+        recording.log_action("save", f"captured {len(content)} chars → {file_name}")
+
+        # ── Close Notepad (content already saved to disk) ─────────────────────
+        from computer_use import windows_native as nat
+        nat.close_app(pid, title_hint="Notepad")
+        recording.log_action("close", "Notepad closed")
 
         # ── Verification pass: LLM reviews the draft ──────────────────────────
         verified = False
@@ -137,7 +149,7 @@ def run() -> dict:
         recording.log_action("result", f"verified={verified} chars={len(content)}")
 
         return {
-            "file":          FILE_NAME,
+            "file":          file_name,
             "chars":         len(content),
             "verified":      verified,
             "missing":       missing,

@@ -9,6 +9,7 @@ Demonstrates a multi-app workflow:
   4. Compose a formatted expense report that embeds the result (Layer 2b / paste)
   5. Save and verify both apps produced matching data
 """
+import datetime
 import re
 import time
 from pathlib import Path
@@ -18,8 +19,13 @@ from computer_use.layers import layer2a_deterministic, layer2b_ally
 from computer_use.logger import log
 
 OUT_DIR    = Path(__file__).parent.parent.parent / "recordings" / "notepad_files"
-FILE_NAME  = "expense_report.txt"
+FILE_STEM  = "expense_report"
 EXPRESSION = "157 * 24"   # units × rate → a realistic budget figure
+
+
+def _ts_filename() -> str:
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    return f"{FILE_STEM}_{ts}.txt"
 
 CALCULATOR_BUNDLE = "calc.exe"
 
@@ -36,7 +42,8 @@ def run(expression: str = EXPRESSION) -> dict:
 
     with recording.session("multiapp"):
         OUT_DIR.mkdir(parents=True, exist_ok=True)
-        file_path = OUT_DIR / FILE_NAME
+        file_name = _ts_filename()
+        file_path = OUT_DIR / file_name
 
         # ════════════════════════════════════════════════════
         # APP 1: Windows Calculator (Layer 2a)
@@ -100,12 +107,19 @@ def run(expression: str = EXPRESSION) -> dict:
         # Capture content from Notepad and write to disk directly
         # (bypasses cua-driver's UIA hotkey limitation on XAML/UWP Notepad)
         time.sleep(0.3)
-        content = _capture_and_save(FILE_NAME, file_path)
+        content = _capture_and_save(pid_note, file_path)
         if not content.strip():
             content = report
             file_path.write_text(content, encoding="utf-8")
             log.warning("Clipboard empty — wrote report directly to disk")
-        recording.log_action("save", f"captured {len(content)} chars")
+        recording.log_action("save", f"captured {len(content)} chars → {file_name}")
+
+        # ── Close both apps (content saved) ──────────────────────────────────
+        from computer_use import windows_native as nat
+        nat.close_app(pid_note, title_hint="Notepad")
+        recording.log_action("close", "Notepad closed")
+        nat.close_app(pid_calc, title_hint="Calculator")
+        recording.log_action("close", "Calculator closed")
 
         # The result number should appear in the report
         verified = (
@@ -119,7 +133,7 @@ def run(expression: str = EXPRESSION) -> dict:
         return {
             "expression": expression,
             "result":     calc_result,
-            "file":       FILE_NAME,
+            "file":       file_name,
             "chars":      len(content),
             "verified":   verified,
             "layer":      "2a+2b",
@@ -178,19 +192,11 @@ def _build_report(expression: str, result: str, date: str) -> str:
     )
 
 
-def _capture_and_save(file_hint: str, file_path: Path) -> str:
-    """Find Notepad by filename in title, capture text via Ctrl+A/C, write to disk."""
-    import win32gui
+def _capture_and_save(pid: int, file_path: Path) -> str:
+    """Focus Notepad by pid, capture text via Ctrl+A/C, write to disk."""
     from computer_use import windows_native as nat
-
-    stem = Path(file_hint).stem
-    hwnd = nat._hwnd_by_title(stem) or nat._hwnd_by_title("Notepad")
-    if hwnd:
-        try:
-            win32gui.SetForegroundWindow(hwnd)
-        except Exception:
-            pass
-        time.sleep(0.3)
+    nat.bring_window_to_front(pid, title_hint="Notepad", retries=4, wait=0.3)
+    time.sleep(0.3)
 
     nat.set_clipboard_text("")
     time.sleep(0.05)

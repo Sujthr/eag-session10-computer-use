@@ -174,6 +174,11 @@ def run(expression: str = "127 * 43 - 58") -> dict:
 
         recording.log_action("result", f"{expression} = {result}")
 
+        # Close Calculator now that we have the result
+        from computer_use import windows_native as nat
+        nat.close_app(pid, title_hint="Calculator")
+        recording.log_action("close", "Calculator closed")
+
         return {
             "expression": expression,
             "result":     result,
