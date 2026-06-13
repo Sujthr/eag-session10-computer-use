@@ -16,3 +16,6 @@ build/
 .agent.pid
 vscode_files/
 recordings/debug/
+youtube_script.md
+*.pdf
+.claude/
